@@ -1,308 +1,190 @@
 # Cachito research handoff - 2026-07-19
 
-## 1. Goal
+## 1. Goal and boundaries
 
-Determine the shortest reliable way to control a Cachito device from an AI-accessible program, preferably without depending on manual operation in the official app.
+Goal: identify the shortest reliable way to control a Cachito accessory from an AI-accessible program.
 
-Desired final behavior, not yet implemented:
+Desired later behavior, not yet implemented:
 
-- two controllable channels: suction and piston;
-- each channel has pause/zero and an apparent 1-100 UI slider;
-- “嗨翻” is gravity/tilt control;
-- later layers may add voice, countdown, and action logging;
-- current phase is protocol identification and stable startup only.
+- suction channel: pause/0 plus apparent 1-100 UI slider;
+- piston channel: pause/0 plus apparent 1-100 UI slider;
+- “嗨翻” means gravity/tilt control;
+- voice, countdown, and action logs are later layers.
 
-## 2. Hard constraints from the debugging session
+Current phase is transport/protocol identification only. Do not create v7, rewrite the working scanner, or send unverified nonzero commands.
 
-- Do not create a v7 or rewrite the project while the protocol is still uncertain.
-- Separate environment, GUI, BLE scanning, and protocol questions.
-- Do not guess an error before reproducing it.
-- Windows PowerShell may be 5.1.
-- `.ps1`: UTF-8 with BOM.
-- `.py`, `.json`, `.md`: UTF-8 without BOM.
-- `.bat`/`.cmd`: English ASCII only, UTF-8 without BOM; launcher only.
-- Do not alter the system locale, registry, or global code page to hide encoding bugs.
-
-## 3. Environment verified on Windows
+## 2. Windows environment and startup diagnosis
 
 Verified manually:
 
-- Python: `C:\Python314\python.exe`, Python 3.14.4, 64-bit.
-- pip: 26.1.1.
-- tkinter: 8.6.
-- bleak import succeeds.
-- minimal Tkinter window opens and closes normally.
-- minimal `BleakScanner.discover(timeout=8.0)` works and found ten devices.
-- a minimal Tkinter + background Bleak scan also opened and closed normally.
+- Python `C:\Python314\python.exe`, version 3.14.4, 64-bit;
+- pip 26.1.1;
+- tkinter 8.6;
+- bleak imports correctly;
+- minimal Tkinter GUI works;
+- minimal `BleakScanner.discover(timeout=8.0)` works;
+- minimal Tkinter plus background BLE scan works.
 
-Therefore the original startup failure was not evidence that Python, tkinter, bleak, threads, or asyncio were fundamentally broken.
+The original v6 startup failure was caused by the launcher layer, not by Python/Tkinter/Bleak. The old `.cmd` files used UTF-8 BOM and Chinese command text, which could become garbled under `cmd.exe` before Python started.
 
-## 4. Windows launcher bug and current scanner
+Encoding rules fixed for future work:
 
-The original v6 launchers were UTF-8 with BOM and contained Chinese command text. Under `cmd.exe` they could become garbled and fail before Python started.
+- `.ps1`: UTF-8 with BOM for Windows PowerShell 5.1 compatibility;
+- `.py`, `.json`, `.md`: UTF-8 without BOM;
+- `.bat`/`.cmd`: English ASCII only, UTF-8 without BOM, launcher logic only;
+- do not change system locale, registry, or global code page to hide encoding faults.
 
-The current launcher fix is intentionally small:
+## 3. Scanner data-quality fix
 
-- ASCII-only `.cmd` files;
-- no BOM;
-- `cd /d "%~dp0"`;
-- `py -3 -u "%~dp0cachito_scan_gui_v6.py"`;
-- preserve exit code and pause so errors remain visible.
+The first guided scanner mislabeled intermediate values because it started capture immediately after displaying a target. The control is a continuous slider, so moving from one target to another produces many intermediate broadcasts.
 
-The current scanner also fixes a data-quality flaw. A continuous slider cannot be sampled by starting a timer as soon as a target is displayed, because all intermediate slider positions are then mislabeled as the target. The new state machine is:
+The corrected v6 state machine is:
 
-1. PREPARE - user adjusts the slider or phone pose without a capture label.
+1. PREPARE: user adjusts slider/phone pose; no capture label is written.
 2. User clicks “已调好，开始采样”.
-3. CAPTURE - clear dedup cache, write `CAPTURE START`, collect for 6 seconds (12 seconds for dynamic movement), write `CAPTURE END`.
+3. CAPTURE: clear dedup cache, write `CAPTURE START`, collect for 6 seconds (12 seconds for dynamic movement), then write `CAPTURE END`.
 4. Advance to the next PREPARE step.
 
 The clean run completed all 21 captures.
 
-## 5. BLE observations
+## 4. BLE observations
 
-### 5.1 Candidate command broadcaster
+Two runs showed a strong advertiser carrying packets correlated with Cachito actions:
 
-Two different runs showed a strong nearby advertiser carrying the Cachito-correlated packets:
+- first run: `55:32:AC:CE:F6:8B`;
+- clean run: `7D:C2:DC:2A:3E:B6`.
 
-- first run candidate address: `55:32:AC:CE:F6:8B`;
-- clean run candidate address: `7D:C2:DC:2A:3E:B6`.
+The address changed between runs but stayed stable during each run. This is consistent with a private/random BLE address, but does not identify whether the advertiser is the phone or the accessory.
 
-The address changed between runs but stayed stable during each run. That is consistent with a private/random BLE address, but it does not prove whether the advertiser is the toy or the iPhone app.
+Repeated packet structure:
 
-The repeated packet family has:
+- Service UUID prefix: `710002..`;
+- stable middle: `0400-265d`;
+- `0302` correlates with suction;
+- `050a` correlates with piston;
+- an earlier run showed `0601` when gravity mode was enabled;
+- Apple manufacturer company ID `0x004C` repeatedly appeared with payload `0100000000000000000000020000000000`.
 
-- Service UUID prefix `710002..`;
-- fixed UUID middle `0400-265d`;
-- mode field `0302` or `050a` in most packets;
-- Apple manufacturer company ID `0x004C` with recurring payload `0100000000000000000000020000000000`.
+Example at the user-labeled 100 suction position:
 
-### 5.2 Correlated channel fields
+`71000247-0400-265d-0302-6400000000aa`
 
-Strong correlation in both runs:
+Working interpretation only:
 
-- `0302` changes with suction operations;
-- `050a` changes with piston operations;
-- earlier capture showed a `0601` packet when gravity mode was enabled;
-- with gravity mode active, packets alternate rapidly between `0302` and `050a`, and the first byte of the final UUID group changes with phone pose.
+- `0302` is a suction channel/mode field;
+- the first byte of the final group is correlated with the value (`64` hex = 100);
+- the first group’s final byte and final group’s last byte change and may be sequence/checksum/derived fields.
 
-### 5.3 Static sample values from the clean run
+## 5. Clean static samples
 
-These are observations, not a validated protocol table. The app uses continuous sliders, the target labels were user-selected positions, and some “1”/return-to-zero samples disagree.
+These are observations, not a validated UI-to-protocol table. Slider targets were user-selected, and the 1/return-to-zero samples disagree.
 
-| UI label | Suction observed byte | Piston observed byte |
+| UI target | suction byte | piston byte |
 |---|---:|---:|
-| baseline/0 | `00` | not isolated in baseline |
-| 1 | `00` (ambiguous) | `01` |
+| baseline/0 | `00` | not isolated |
+| 1 | `00` ambiguous | `01` |
 | 10 | `20` | `20` |
 | 25 | `2B` | `2B` |
 | 50 | `3E` | `3E` |
 | 75 | `51` | `51` |
 | 100 | `64` | `64` |
-| return to 0 | `00` | `01` (ambiguous) |
+| return to 0 | `00` | `01` ambiguous |
 
-The middle points form a suspiciously regular sequence, but no formula should be hard-coded yet. The clean dataset still describes slider target positions, not independently verified exact numeric values from the app UI.
+The middle points look regular, but no formula should be shipped from these approximate slider positions. Exact UI numeric values were not independently verified.
 
-### 5.4 UUID layout hypothesis
+## 6. Critical identity question
 
-Observed example:
+The strongest current hypothesis is that `710002..` may be emitted by the iPhone app rather than by the accessory:
 
-`71000247-0400-265d-0302-6400000000aa`
+- manufacturer company ID is Apple `0x004C`;
+- prior app inspection showed both `bluetooth-central` and `bluetooth-peripheral` background modes;
+- prior symbol inspection found `CBPeripheralManager` and `startAdvertisingWithServiceUUID:`-style symbols;
+- packets change exactly when app sliders or gravity mode change.
 
-Candidate interpretation:
+If true, connecting to the random address with `BleakClient` is the wrong goal. It may be a temporary phone advertisement while the accessory scans those advertisements.
 
-- `71000247`: family/prefix plus a changing byte;
-- `0400-265d`: stable marker;
-- `0302`: suction channel/mode;
-- first byte of `6400000000aa`: value `0x64` (100);
-- last byte may be checksum/sequence/derived byte;
-- other changing bytes have not been decoded.
+This remains unverified.
 
-This is a working hypothesis only.
+## 7. Prior iOS/macOS observations requiring re-verification
 
-## 6. Key unresolved identity question
+Previously observed:
 
-The strongest current theory is that the packets may be emitted by the iPhone app rather than by the toy:
-
-- manufacturer ID is Apple `0x004C`;
-- the iOS app has previously been observed with both central and peripheral Bluetooth background modes;
-- prior binary-symbol inspection found `CBPeripheralManager` and `startAdvertisingWithServiceUUID:`-style symbols;
-- the packets change exactly when the app sliders or gravity mode change.
-
-If this is correct, connecting to the random address with `BleakClient` is the wrong goal. The address would identify a temporary iPhone advertisement, while the toy may receive commands by scanning those advertisements.
-
-This must be tested, not assumed.
-
-## 7. Prior iOS/macOS app observations (raw extraction not included in this session)
-
-Previously observed app location and binary facts:
-
-- app bundle: `/Applications/Cachito.app/Wrapper/CachitoiOS.app`;
+- bundle: `/Applications/Cachito.app/Wrapper/CachitoiOS.app`;
 - executable: `CachitoiOS`;
 - architecture: arm64;
-- Info.plist indicated Bluetooth connection permissions and background modes `bluetooth-central` and `bluetooth-peripheral`;
-- noteworthy symbols/strings included:
-  - `BleManager`
-  - `AdvertisHelper`
-  - `ToyCommondModel`
-  - `UserRemoteCommandModel`
-  - `CustomModePlayManager`
-  - `BTModeData`
-  - `OOMWritenHandler`
-  - `CBPeripheralManager`
-  - `startAdvertisingWithServiceUUID:`
-  - `ZJQserviceUUID:`
-  - `writeValue:forCharacteristic:type:`
-  - `dataOutCharacteristic`
+- symbols/strings included `BleManager`, `AdvertisHelper`, `ToyCommondModel`, `UserRemoteCommandModel`, `CustomModePlayManager`, `BTModeData`, `OOMWritenHandler`, `CBPeripheralManager`, `startAdvertisingWithServiceUUID:`, `ZJQserviceUUID:`, `writeValue:forCharacteristic:type:`, and `dataOutCharacteristic`.
 
-These clues suggest the app may support both advertisement-based control and connection/GATT writes. Claude should re-verify them against the actual binary before treating them as canonical.
+These clues suggest both advertisement-based control and GATT writes may exist. The original extraction files are not available in this runtime, so Claude must not treat this list as canonical without checking the binary.
 
-## 8. Official remote-control path confirmed
+## 8. Official remote path confirmed
 
-The official app has:
+The official app provides:
 
-- “发起远程” on the device-owning phone;
-- “远程控制” on the controller phone;
+- “发起远程” on the host phone;
+- “远程控制” on a second phone;
 - a temporary six-character invitation code;
-- a successful end-to-end test where the second phone controlled the first phone/device path.
+- a successful end-to-end control test.
 
-The actual code used in testing is intentionally omitted because it is an ephemeral credential.
+The test code is intentionally omitted as an ephemeral credential.
 
 Likely architecture:
 
-`toy <-BLE-> host app <-cloud/WebSocket or similar-> remote app`
+`accessory <-BLE-> host app <-cloud session-> remote app`
 
-The user-facing code may be only a lookup key; server URL, session token, and transport details can remain internal to the app.
+The six-character code may only be a lookup key; server URL, session token, heartbeat, and transport can remain internal to the app.
 
-A reference screenshot from an unrelated/analogous implementation describes a session + WebSocket route. It is evidence for a possible architecture, not evidence of Cachito’s exact API or message format.
+## 9. Candidate routes
 
-## 9. Candidate implementation routes
+### A. Document and emulate the official remote-controller flow
 
-### Route A - reverse the official remote session (preferred if accessible)
+Preferred if the client/server flow is observable and stable. The host app continues handling BLE pairing and random addresses. Needed evidence: session creation, code exchange, transport type, message schema, authentication, expiry, heartbeat, and reconnect behavior.
 
-Goal: emulate the remote-controller app, while the official host app remains the BLE gateway.
+### B. Reproduce the app’s BLE advertisements
 
-Evidence supporting it:
+Plausible if the phone is the `710002..` advertiser. Windows/Bleak is mainly a central/client stack and may not be suitable for peripheral advertising. macOS CoreBluetooth, Linux BlueZ, ESP32, or nRF52 may be required. Timing, sequence/checksum, and association logic remain unknown.
 
-- official six-character remote session works;
-- avoids random BLE-address handling;
-- host app already solves pairing, reconnect, and toy-specific transport.
+### C. Connect directly to the accessory over GATT
 
-Required observations:
+Plausible because app symbols mention characteristic writes. First find the accessory’s own advertisement while the official app is disconnected, then perform read-only service/characteristic enumeration using the scanned `BLEDevice` object. Do not assume the `710002..` advertiser is connectable.
 
-1. network requests made when a host session is created;
-2. request made when a controller submits the six-character code;
-3. returned session/token/server details;
-4. WebSocket/SSE/HTTP transport;
-5. messages sent by suction, piston, pause, and gravity controls;
-6. authentication, expiry, heartbeat, and reconnect rules.
+### D. Automate the official UI
 
-Methods, in escalating order:
+Lowest protocol risk but fragile, difficult to run headlessly, and poor as a long-term AI integration. Keep only as fallback.
 
-- ordinary HTTPS proxy capture using a test device and installed CA;
-- inspect app strings/config for host names and endpoints;
-- runtime instrumentation if TLS pinning or encrypted payloads block proxying;
-- static analysis around `UserRemoteCommandModel` and remote-control classes.
+## 10. Recommended next decision test
 
-Do not publish live invitation codes, tokens, or account credentials.
+First establish who emits `710002..` without writing anything:
 
-### Route B - reproduce app BLE advertisements
+1. app killed, accessory on;
+2. app open, accessory off;
+3. app open, accessory on;
+4. compare presence, RSSI, address, and packet behavior.
 
-Goal: have another BLE peripheral broadcaster emit the same `710002..` service UUID sequence as the iPhone app.
+In parallel, document one official remote session’s ordinary client/server flow without publishing codes or credentials.
 
-Evidence supporting it:
+Decision:
 
-- command-correlated data appears inside advertised Service UUIDs;
-- iOS peripheral-mode clues exist;
-- random address belongs naturally to an advertiser.
+- readable/stable remote flow -> Route A;
+- phone advertisement confirmed and remote flow opaque -> Route B;
+- separate connectable accessory plus writable GATT service found -> Route C;
+- otherwise temporary Route D.
 
-Risks:
+## 11. Safety and exclusions
 
-- Windows + Bleak is mainly a central/scanner/client stack and does not provide a portable BLE peripheral advertiser API;
-- may require macOS CoreBluetooth, Linux BlueZ, ESP32, or nRF52;
-- timing, rotation, checksum, sequence byte, and device association may matter;
-- merely replaying one UUID may be insufficient.
+- Do not hard-code either observed address.
+- “Seen in scan” does not mean “connectable”.
+- Do not ship a value formula from six approximate positions.
+- Begin with read-only enumeration and pause/zero tests.
+- Prefer unloaded bench testing and keep physical power-off available.
+- Rate-limit experiments and log timestamp, transport, session/address, command, and result.
+- Do not publish invitation codes, tokens, or account credentials.
 
-Needed tests:
+## 12. Files actually included in this PR
 
-- stop/kill the Cachito app and observe whether the `710002` advertiser disappears;
-- disconnect or power off the toy and observe whether it persists;
-- replay one known harmless pause/zero advertisement using peripheral-capable hardware;
-- test whether the toy responds without the official app.
+- `README.md`;
+- this complete handoff;
+- `docs/CLAUDE_REVIEW_PROMPT.md`;
+- `analysis/static_samples.csv`;
+- `documents/REUPLOAD_REQUIRED.md`.
 
-### Route C - direct GATT connection to the toy
-
-Goal: discover the actual toy, connect, list GATT services, and reproduce writes.
-
-Evidence supporting it:
-
-- binary symbols include `writeValue:forCharacteristic:type:` and `dataOutCharacteristic`;
-- the app requests central-mode Bluetooth.
-
-Needed tests:
-
-- scan with the official app disconnected to reveal the toy’s own advertisement;
-- use the scanned `BLEDevice` object, not a permanently stored address;
-- connect read-only and enumerate GATT services/characteristics;
-- instrument the app to capture exact writes and characteristic UUIDs;
-- test zero/pause only before any nonzero write.
-
-Do not assume the `710002` advertiser is connectable.
-
-### Route D - UI automation of the official app
-
-Goal: automate the official controller UI rather than reverse a protocol.
-
-Advantages:
-
-- lowest protocol risk;
-- app retains responsibility for safety and reconnection.
-
-Disadvantages:
-
-- fragile layout/accessibility dependency;
-- difficult headless operation;
-- poor latency and limited AI integration;
-- not ideal as a final architecture.
-
-Use only as a fallback or temporary prototype.
-
-## 10. Recommended decision tree
-
-1. First establish who emits `710002`:
-   - app killed, toy on;
-   - app open, toy off;
-   - app open, toy on;
-   - compare presence, RSSI, and address behavior.
-2. In parallel, capture one official remote session network flow.
-3. If remote flow is readable and stable, choose Route A.
-4. If remote flow is pinned/opaque but `710002` is app advertising, choose Route B and use peripheral-capable hardware.
-5. If a separate connectable toy advertisement and writable GATT service are found, choose Route C.
-6. Keep Route D only as fallback.
-
-## 11. What not to do yet
-
-- Do not hard-code either observed MAC address.
-- Do not equate “seen in scan” with “connectable”.
-- Do not fit and ship an intensity formula from six approximate slider points.
-- Do not send unverified nonzero writes.
-- Do not build voice/countdown/AI control before transport is proven.
-- Do not rewrite the working scanner while investigating the protocol.
-
-## 12. Safety and test discipline
-
-- Prefer unloaded/bench testing.
-- Keep immediate physical power-off available.
-- Begin with read-only enumeration and pause/zero commands.
-- Rate-limit experimental writes.
-- Log timestamp, transport, address/session, command, and response.
-- Treat remote codes and tokens as secrets.
-
-## 13. Included files
-
-- current scanner and ASCII launchers;
-- v2, v5, original v6, debugged v6, and slider-capture-fixed archives;
-- two guided scan logs with local username redacted;
-- static normalized sample CSV;
-- parser script;
-- reference screenshot;
-- missing-original-document manifest.
+The original scanner archives, full raw logs, screenshot, and previously shared Word/PDF originals are not attached to this PR. A complete local evidence bundle was prepared separately, but the inaccessible prior documents are not reconstructed or represented as originals.
