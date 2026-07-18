@@ -1,0 +1,16 @@
+step,duration,action,address,service_uuid,mode,value_hex,value_decimal,status
+1,6,基线：吮吸 0；炮机 0；嗨翻关闭,7D:C2:DC:2A:3E:B6,7100029f-0400-265d-0302-00000000009e,0302,00,0,observed; not yet a validated UI-to-protocol mapping
+2,6,吮吸调到 1；炮机保持 0；嗨翻关闭,7D:C2:DC:2A:3E:B6,71000214-0400-265d-0302-000000000013,0302,00,0,observed; not yet a validated UI-to-protocol mapping
+3,6,吮吸调到 10；炮机保持 0；嗨翻关闭,7D:C2:DC:2A:3E:B6,7100024a-0400-265d-0302-200000000069,0302,20,32,observed; not yet a validated UI-to-protocol mapping
+4,6,吮吸调到 25；炮机保持 0；嗨翻关闭,7D:C2:DC:2A:3E:B6,7100024a-0400-265d-0302-2b0000000074,0302,2B,43,observed; not yet a validated UI-to-protocol mapping
+5,6,吮吸调到 50；炮机保持 0；嗨翻关闭,7D:C2:DC:2A:3E:B6,7100027b-0400-265d-0302-3e00000000b8,0302,3E,62,observed; not yet a validated UI-to-protocol mapping
+6,6,吮吸调到 75；炮机保持 0；嗨翻关闭,7D:C2:DC:2A:3E:B6,71000266-0400-265d-0302-5100000000b6,0302,51,81,observed; not yet a validated UI-to-protocol mapping
+7,6,吮吸调到 100；炮机保持 0；嗨翻关闭,7D:C2:DC:2A:3E:B6,71000247-0400-265d-0302-6400000000aa,0302,64,100,observed; not yet a validated UI-to-protocol mapping
+8,6,吮吸回到 0；炮机保持 0；嗨翻关闭,7D:C2:DC:2A:3E:B6,71000285-0400-265d-0302-000000000084,0302,00,0,observed; not yet a validated UI-to-protocol mapping
+9,6,炮机调到 1；吮吸保持 0；嗨翻关闭,7D:C2:DC:2A:3E:B6,71000233-0400-265d-050a-01000000003d,050a,01,1,observed; not yet a validated UI-to-protocol mapping
+10,6,炮机调到 10；吮吸保持 0；嗨翻关闭,7D:C2:DC:2A:3E:B6,71000294-0400-265d-050a-2000000000bd,050a,20,32,observed; not yet a validated UI-to-protocol mapping
+11,6,炮机调到 25；吮吸保持 0；嗨翻关闭,7D:C2:DC:2A:3E:B6,71000214-0400-265d-050a-2b0000000048,050a,2B,43,observed; not yet a validated UI-to-protocol mapping
+12,6,炮机调到 50；吮吸保持 0；嗨翻关闭,7D:C2:DC:2A:3E:B6,71000223-0400-265d-050a-3e000000006a,050a,3E,62,observed; not yet a validated UI-to-protocol mapping
+13,6,炮机调到 75；吮吸保持 0；嗨翻关闭,7D:C2:DC:2A:3E:B6,7100022c-0400-265d-050a-510000000086,050a,51,81,observed; not yet a validated UI-to-protocol mapping
+14,6,炮机调到 100；吮吸保持 0；嗨翻关闭,7D:C2:DC:2A:3E:B6,71000286-0400-265d-050a-6400000000f3,050a,64,100,observed; not yet a validated UI-to-protocol mapping
+15,6,炮机回到 0；吮吸保持 0；嗨翻关闭,7D:C2:DC:2A:3E:B6,7100026b-0400-265d-050a-010000000075,050a,01,1,observed; not yet a validated UI-to-protocol mapping
