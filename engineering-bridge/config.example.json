@@ -1,0 +1,8 @@
+{
+  "controlRepo": "OWNER/PRIVATE-CONTROL-REPO",
+  "pollSeconds": 10,
+  "projects": {
+    "cyberboss": "C:\\path\\to\\cyberboss",
+    "pi": "C:\\path\\to\\PI-Personal-Instance-OS"
+  }
+}
